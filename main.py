@@ -3,15 +3,16 @@ import matplotlib.pyplot as plt
 from myNN import myNN
 
 # ----------------- Parameters -----------------
-n_train = 1000000
+n_train = 10000
 n_test = 100
-dims = [2,7,7,1]
-act_types = ['relu', 'relu', 'sig']
+dims = [2,4,1]
+act_types = ['relu', 'sig']
+loss_type = 'L1'
 lr = 1e-1
-B = 256
+B = 64
 n_train = B * (n_train // B)
 rng = np.random.default_rng(2012)
-rng = np.random
+# rng = np.random
 def f_true(x):
 	a = 0 + (x[0,:] > 0.5)
 	b = 0 + (x[1,:] > 0.5)
@@ -21,7 +22,8 @@ def f_true(x):
 # Create neural net
 nn = myNN(
 		dims=dims, 
-		act_types=act_types, 
+		act_types=act_types,
+		loss_type=loss_type, 
 		lr=lr,
 		batch_size=B,
 		rng=rng)
@@ -52,8 +54,13 @@ for r in range(n_test):
 # plt.rcParams['font.size'] = '20'
 plt.figure(figsize=(7,3))
 plt.subplot(121)
-plt.title('Loss vs MiniBatch')
-plt.plot(mses)  
+plt.title(f'Loss = {loss_type}, MiniBatch = {B}')
+plt.ylabel('Loss')
+plt.xlabel('Epoch')
+plt.plot(mses)
 plt.subplot(122)
+plt.title('NN Output Visualization')
+plt.xlabel('x')
+plt.ylabel('y')
 plt.imshow(Z, origin='lower', extent=[-1, 1] * 2)
 plt.show()

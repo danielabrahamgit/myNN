@@ -1,3 +1,4 @@
+from markupsafe import soft_unicode
 import numpy as np
 
 class myNN:
@@ -68,21 +69,35 @@ class myNN:
 		return weights, bias
 
 	def get_loss(loss_type):
-		mse = lambda X, Y : np.mean((X - Y) ** 2)
-		dmse = lambda X, Y: 2 * (X - Y) / X.shape[0]
-		if loss_type == 'MSE':
-			return mse, dmse
+		l2   = lambda X, Y : np.mean((X-Y) ** 2)
+		dl2  = lambda X, Y : 2 * (X-Y) / X.shape[0]
+		l1   = lambda X, Y : np.mean(np.abs(X-Y))
+		dl1  = lambda X, Y : np.sign(X-Y) / X.shape[0]
+		ent  = lambda X, Y : -np.mean(Y*np.log(X + 1e-5))
+		dent = lambda X, Y : -np.mean(Y/(X + 1e-5))
+		if   loss_type == 'L2':
+			return l2, dl2
+		elif loss_type == 'L1':
+			return l1, dl1
+		elif loss_type == 'ent':
+			return ent, dent
 		else:
 			print('Invalid Loss')
 			quit()
 
 	def get_activation(act_type):
-		relu = lambda x : x * (x > 0)
+		relu  = lambda x : x * (x > 0)
 		drelu = lambda x : 0 + (x > 0)
-		sig = lambda x : 1 / (1 + np.exp(-x))
-		dsig =  lambda x : sig(x) * (1 - sig(x))
-		lin = lambda x : x 
-		dlin = lambda x : np.ones(x.shape)
+		sig   = lambda x : 1 / (1 + np.exp(-x))
+		dsig  =  lambda x : sig(x) * (1 - sig(x))
+		lin   = lambda x : x 
+		dlin  = lambda x : np.ones(x.shape)
+		# def soft(x):
+		# 	xs = x - np.max(x)
+		# 	ex = np.exp(xs)
+		# 	return ex / np.sum(ex)
+		# def dsoft(x):
+
 		if   act_type == 'relu':
 			return relu, drelu
 		elif act_type == 'sig':
@@ -107,7 +122,11 @@ class myNN:
 
 				# gradients
 				# grad = dedx(i+1)
-				dedy_i = self.dacts[i](self.ys[i]) * self.grads[i+1]
+				dydx = self.dacts[i](self.ys[i])
+				# if dydx.shape == 3:
+				# dedy_i = D @ self.grads[i+1]
+				dedy_i = dydx * self.grads[i+1]
+
 				# print(dedy_i.shape)
 				dW = dedy_i @ self.xs[i].T
 				db = dedy_i
