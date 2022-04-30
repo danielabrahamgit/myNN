@@ -7,10 +7,24 @@ class myNN:
 	0 -> input layer
 	xk+1 = act(yk), yk = Mk @ xk + bk
 	"""
-	def __init__(self, dims, act_types, loss_type='MSE', lr=1e-2):
+	def __init__(self, dims, act_types, loss_type='MSE', lr=1e-2, batch_size=1, rng=None):
 		assert len(dims) >= 2
 		assert len(act_types) == len(dims) - 1
 
+		# Save constants
+		self.lr = lr 
+		self.B = batch_size
+		self.N = len(act_types)
+		self.input = None
+		self.loss, self.dloss = myNN.get_loss(loss_type)
+
+		# Random number gen
+		if rng is None:
+			self.rng = np.random
+		else:
+			self.rng = rng
+
+		# Per layer parameters
 		self.weights = []
 		self.biases = []
 		self.acts = []
@@ -19,37 +33,43 @@ class myNN:
 		self.xs = []
 		self.grads = []
 
+		# Populate
 		for i in range(len(dims) - 1):
-			shape = (dims[i], dims[i+1])
+			weight_dims = (dims[i+1], dims[i])
 			act, dact = myNN.get_activation(act_types[i])
 			self.acts.append(act)
 			self.dacts.append(dact)
-			self.weights.append(myNN.init_matrix((shape[1], shape[0])))
-			self.biases.append(myNN.init_matrix(shape[1]))
-			self.xs.append(np.zeros(shape[0]))
-			self.ys.append(np.zeros(shape[1]))
-			self.grads.append(np.zeros(shape))
-		self.xs.append(np.zeros(shape[1]))
-		self.grads.append(np.zeros(shape[1]))
+			weights, bias = self.init_weights_and_bias(weight_dims) 
+			self.weights.append(weights)
+			self.biases.append(bias)
+			self.xs.append(None)
+			self.ys.append(None)
+			self.grads.append(None)
+		self.xs.append(None)
+		self.grads.append(None)
 
-		self.loss, self.dloss = myNN.get_loss(loss_type)
-		self.N = len(self.weights)
-		self.input = None
-		self.lr = lr
-
-	def forward(self, x):
-		self.xs[0] = x 
+	def forward(self, x, p=False):
+		if len(x.shape) == 1:
+			self.xs[0] = x.reshape((-1,self.B))
+		else:
+			self.xs[0] = x
+			b_temp = x.shape[1]
 		for i in range(self.N):
-			self.ys[i] = self.weights[i] @ self.xs[i] + self.biases[i]
+			self.ys[i] = self.weights[i] @ self.xs[i] + self.biases[i][:,:b_temp]
 			self.xs[i+1] = self.acts[i](self.ys[i])
 		return self.xs[self.N]
 
-	def init_matrix(shape):
-		return np.random.uniform(-1,1,shape)
+	def init_weights_and_bias(self, shape):
+		assert len(shape) == 2
+		L = np.sqrt(6 / (np.sum(shape)))
+		weights = self.rng.uniform(-L, L, shape)
+		bias = self.rng.uniform(-L, L, (shape[0], 1)).repeat(self.B, axis=1)
+		bias = self.rng.uniform(-L, L, (shape[0], 1)).repeat(self.B, axis=1)
+		return weights, bias
 
 	def get_loss(loss_type):
-		mse = lambda x, y : np.mean((x - y) ** 2)
-		dmse = lambda x, y: 2 * (x - y) / len(x)
+		mse = lambda X, Y : np.mean((X - Y) ** 2)
+		dmse = lambda X, Y: 2 * (X - Y) / X.shape[0]
 		if loss_type == 'MSE':
 			return mse, dmse
 		else:
@@ -73,32 +93,6 @@ class myNN:
 			print('Invalid Activation Function Keyword')
 			quit()
 
-	def dy_dmat(self, layer_ind):
-		# i -> rows
-		# j -> cols 
-		# k -> out_ind
-		ni, nj = self.weights[layer_ind].shape
-		nk = len(self.ys[layer_ind])
-		deriv = np.zeros((ni, nj, nk))
-		i = np.arange(ni)
-		deriv[i,:,i] = self.xs[layer_ind]
-		return deriv
-
-	def dy_db(self, layer_ind):
-		deriv = np.eye(len(self.biases[layer_ind]))
-		return deriv
-
-	# If k is layer_ind, then
-	# we want dx[k+1]/dy[k]
-	def dx_dy(self, layer_ind):
-		dgnal = self.dacts[layer_ind](self.ys[layer_ind])
-		return np.diag(dgnal)
-
-	# If k is layer_ind, the
-	# we want dy[k]/dx[k]
-	def dy_dx(self, layer_ind):
-		return self.weights[layer_ind]
-
 	def compare_loss(self, true_out, back_prop=False):
 		out = self.xs[self.N]
 		e = self.loss(out, true_out)
@@ -109,24 +103,19 @@ class myNN:
 			self.grads[self.N] = dedout
 
 			for i in range(self.N)[::-1]:
+				# print(f'layer={i}')
 
 				# gradients
-				dxdy = self.dx_dy(i)
-				dydW = self.dy_dmat(i)
-				dydb = self.dy_db(i)
-				grad = self.grads[i+1]
-
-				dW = dydW @ dxdy @ grad
-				db = dydb @ dxdy @ grad
+				# grad = dedx(i+1)
+				dedy_i = self.dacts[i](self.ys[i]) * self.grads[i+1]
+				# print(dedy_i.shape)
+				dW = dedy_i @ self.xs[i].T
+				db = dedy_i
 
 				# update weights and biases ith layer
-				self.weights[i] -= self.lr * dW
-				self.biases[i] -= self.lr * db
+				self.weights[i] -= self.lr * dW / self.B
+				self.biases[i] -= self.lr * db / self.B
 
-				# print(self.weights[i].shape, dxdy.shape, grad.shape)
 				# update gradients 
-				self.grads[i] = self.weights[i].T @ dxdy @ grad
-
+				self.grads[i] = self.weights[i].T @ dedy_i
 		return e
-
-
